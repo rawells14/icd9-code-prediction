@@ -9,7 +9,7 @@ from tqdm import tqdm
 
 import pandas as pd
 
-from constants import MIMIC_3_DIR
+from caml-mimic.constants import MIMIC_3_DIR
 
 #retain only alphanumeric
 tokenizer = RegexpTokenizer(r'\w+')
