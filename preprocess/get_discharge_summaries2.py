@@ -1,6 +1,9 @@
 """
     Reads NOTEEVENTS file, finds the discharge summaries, preprocesses them and writes out the filtered dataset.
 """
+import sys
+sys.path.append('caml-mimic/')
+
 import csv
 
 from nltk.tokenize import RegexpTokenizer
@@ -9,7 +12,7 @@ from tqdm import tqdm
 
 import pandas as pd
 
-from caml-mimic.constants import MIMIC_3_DIR
+from constants import MIMIC_3_DIR
 
 #retain only alphanumeric
 tokenizer = RegexpTokenizer(r'\w+')
@@ -17,7 +20,7 @@ tokenizer = RegexpTokenizer(r'\w+')
 def write_discharge_summaries(out_file):
     notes_file = '%s/NOTEEVENTS.csv.gz' % (MIMIC_3_DIR)
     print("processing notes file")
-    df_notes = pd.read(notes_file)
+    df_notes = pd.read_csv(notes_file)
     total = len(df_notes.index)
     with open(out_file, 'w') as outfile:
         print("writing to %s" % (out_file))
