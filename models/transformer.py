@@ -196,7 +196,9 @@ class TransformerEncoder(EncoderBase):
             out = layer(out, mask)
         out = self.layer_norm(out)
 
-        return out.transpose(0, 1).contiguous()
+        return out
+        # return out.transpose(0, 1).contiguous()
+        # TODO
 
 
 class TransformerAttn(BaseModel):
@@ -230,7 +232,7 @@ class TransformerAttn(BaseModel):
         super(TransformerAttn, self).__init__(Y, embed_file, dicts, lmbda, dropout=dropout, gpu=gpu, embed_size=embed_size)
 
 
-        self.transformer = TransformerEncoder(num_layers, d_model, heads, d_ff, dropout, embeddings,
+        self.transformer = TransformerEncoder(num_layers, d_model, heads, d_ff, dropout, self.embed,
                  max_relative_positions)
 
         # context vectors for computing attention as in 2.2
@@ -239,7 +241,7 @@ class TransformerAttn(BaseModel):
         # final layer: create a matrix to use for the L binary classifiers as in 2.3
         self.final = nn.Linear(embed_size, Y)
 
-    def forward(self, src, lengths=None):
+    def forward(self, src, target):
         x = self.transformer(src)
 
         # apply attention
@@ -250,5 +252,5 @@ class TransformerAttn(BaseModel):
         y = self.final.weight.mul(m).sum(dim=2).add(self.final.bias)
 
         yhat = y
-        loss = self._get_loss(yhat, target, diffs)
+        loss = self._get_loss(yhat, target)
         return yhat, loss, alpha
