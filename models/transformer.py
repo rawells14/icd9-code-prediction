@@ -227,12 +227,12 @@ class TransformerAttn(BaseModel):
         * memory_bank ``(src_len, batch_size, model_dim)``
     """
 
-    def __init__(self, Y, embed_file, dicts, lmbda, gpu, embed_size, num_layers, d_model, heads, d_ff, dropout, embeddings,
+    def __init__(self, Y, embed_file, dicts, lmbda, gpu, embed_size, num_layers, heads, d_ff, dropout,
                  max_relative_positions):
         super(TransformerAttn, self).__init__(Y, embed_file, dicts, lmbda, dropout=dropout, gpu=gpu, embed_size=embed_size)
 
 
-        self.transformer = TransformerEncoder(num_layers, d_model, heads, d_ff, dropout, self.embed,
+        self.transformer = TransformerEncoder(num_layers, embed_size, heads, d_ff, dropout, self.embed,
                  max_relative_positions)
 
         # context vectors for computing attention as in 2.2
