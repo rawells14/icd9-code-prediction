@@ -307,11 +307,11 @@ def test(model, Y, epoch, data_path, fold, gpu, version, code_inds, dicts, sampl
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="train a neural network on some clinical documents")
-    parser.add_argument("data_path", type=str,
+    parser.add_argument("--data_path", type=str,
                         help="path to a file containing sorted train data. dev/test splits assumed to have same name format with 'train' replaced by 'dev' and 'test'")
-    parser.add_argument("vocab", type=str, help="path to a file holding vocab word list for discretizing words")
-    parser.add_argument("Y", type=str, help="size of label space")
-    parser.add_argument("n_epochs", type=int, help="number of epochs to train")
+    parser.add_argument("--vocab", type=str, help="path to a file holding vocab word list for discretizing words")
+    parser.add_argument("--Y", type=str, help="size of label space")
+    parser.add_argument("--n_epochs", type=int, help="number of epochs to train")
     parser.add_argument("--embed-file", type=str, required=False, dest="embed_file",
                         help="path to a file holding pre-trained embeddings")
     parser.add_argument("--embed-size", type=int, required=False, dest="embed_size", default=100,
