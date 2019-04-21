@@ -23,7 +23,7 @@ from collections import defaultdict
 from constants import *
 import datasets
 import evaluation
-import interpret
+import learn.interpret as interpret
 import persistence
 import learn.models as models
 import learn.tools as tools
