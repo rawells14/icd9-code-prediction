@@ -341,6 +341,8 @@ if __name__ == "__main__":
                         help="which metric to use for early stopping (default: f1_micro)")
     parser.add_argument("--patience", type=int, default=3, required=False,
                         help="how many epochs to wait for improved criterion metric before early stopping (default: 3)")
+    parser.add_argument("--public-model", dest="public_model", action="store_const", required=False, const=True,
+                        help="optional flag for testing pre-trained models from the public github")
     parser.add_argument("--gpu", dest="gpu", action="store_const", required=False, const=True,
                         help="optional flag to use GPU if available")
     parser.add_argument("--quiet", dest="quiet", action="store_const", required=False, const=True,
