@@ -50,7 +50,7 @@ def init(args):
     dicts = datasets.load_lookups(args, desc_embed=desc_embed)
 
     model = transformer.TransformerAttn(args.Y, args.embed_file, dicts, args.lmbda, args.gpu, args.embed_size,
-                                        args.num_layers, args.heads, args.d_ff, args.dropout, args.max_relative_position)
+                                        args.num_layers, args.heads, args.d_ff, args.dropout, args.max_relative_positions)
     print(model)
 
     if not args.test_model:
