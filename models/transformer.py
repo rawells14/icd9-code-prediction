@@ -1,12 +1,94 @@
 """
 Implementation of "Attention is All You Need"
 """
-
 import torch.nn as nn
+import sys
+sys.path.append('../caml-mimic')
+from gensim.models import KeyedVectors
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch.nn.init import xavier_uniform
+from torch.autograd import Variable
+from constants import *
+from dataproc import extract_wvs
+
+import numpy as np
+
+from math import floor
 
 from utils.encoder import EncoderBase
 from utils.multi_headed_attn import MultiHeadedAttention
 from utils.position_ffn import PositionwiseFeedForward
+
+class BaseModel(nn.Module):
+    def __init__(self, Y, embed_file, dicts, lmbda=0, dropout=0.5, gpu=True, embed_size=100):
+        super(BaseModel, self).__init__()
+        torch.manual_seed(1337)
+        self.gpu = gpu
+        self.Y = Y
+        self.embed_size = embed_size
+        self.embed_drop = nn.Dropout(p=dropout)
+        self.lmbda = lmbda
+
+        # make embedding layer
+        if embed_file:
+            print("loading pretrained embeddings...")
+            W = torch.Tensor(extract_wvs.load_embeddings(embed_file))
+
+            self.embed = nn.Embedding(W.size()[0], W.size()[1], padding_idx=0)
+            self.embed.weight.data = W.clone()
+        else:
+            # add 2 to include UNK and PAD
+            vocab_size = len(dicts['ind2w'])
+            self.embed = nn.Embedding(vocab_size + 2, embed_size, padding_idx=0)
+
+    def _get_loss(self, yhat, target, diffs=None):
+        # calculate the BCE
+        loss = F.binary_cross_entropy_with_logits(yhat, target)
+
+        # add description regularization loss if relevant
+        if self.lmbda > 0 and diffs is not None:
+            diff = torch.stack(diffs).mean()
+            loss = loss + diff
+        return loss
+
+    def embed_descriptions(self, desc_data, gpu):
+        # label description embedding via convolutional layer
+        # number of labels is inconsistent across instances, so have to iterate over the batch
+        b_batch = []
+        for inst in desc_data:
+            if len(inst) > 0:
+                if gpu:
+                    lt = Variable(torch.cuda.LongTensor(inst))
+                else:
+                    lt = Variable(torch.LongTensor(inst))
+                d = self.desc_embedding(lt)
+                d = d.transpose(1, 2)
+                d = self.label_conv(d)
+                d = F.max_pool1d(F.tanh(d), kernel_size=d.size()[2])
+                d = d.squeeze(2)
+                b_inst = self.label_fc1(d)
+                b_batch.append(b_inst)
+            else:
+                b_batch.append([])
+        return b_batch
+
+    def _compare_label_embeddings(self, target, b_batch, desc_data):
+        # description regularization loss
+        # b is the embedding from description conv
+        # iterate over batch because each instance has different # labels
+        diffs = []
+        for i, bi in enumerate(b_batch):
+            ti = target[i]
+            inds = torch.nonzero(ti.data).squeeze().cpu().numpy()
+
+            zi = self.final.weight[inds, :]
+            diff = (zi - bi).mul(zi - bi).mean()
+
+            # multiply by number of labels to make sure overall mean is balanced with regard to number of labels
+            diffs.append(self.lmbda * diff * bi.size()[0])
+        return diffs
 
 
 class TransformerEncoderLayer(nn.Module):
@@ -114,4 +196,59 @@ class TransformerEncoder(EncoderBase):
             out = layer(out, mask)
         out = self.layer_norm(out)
 
-        return emb, out.transpose(0, 1).contiguous(), lengths
+        return out.transpose(0, 1).contiguous()
+
+
+class TransformerAttn(BaseModel):
+    """The Transformer encoder from "Attention is All You Need"
+    :cite:`DBLP:journals/corr/VaswaniSPUJGKP17`
+    .. mermaid::
+       graph BT
+          A[input]
+          B[multi-head self-attn]
+          C[feed forward]
+          O[output]
+          A --> B
+          B --> C
+          C --> O
+    Args:
+        num_layers (int): number of encoder layers
+        d_model (int): size of the model
+        heads (int): number of heads
+        d_ff (int): size of the inner FF layer
+        dropout (float): dropout parameters
+        embeddings (onmt.modules.Embeddings):
+          embeddings to use, should have positional encodings
+    Returns:
+        (torch.FloatTensor, torch.FloatTensor):
+        * embeddings ``(src_len, batch_size, model_dim)``
+        * memory_bank ``(src_len, batch_size, model_dim)``
+    """
+
+    def __init__(self, Y, embed_file, dicts, lmbda, gpu, embed_size, num_layers, d_model, heads, d_ff, dropout, embeddings,
+                 max_relative_positions):
+        super(TransformerAttn, self).__init__(Y, embed_file, dicts, lmbda, dropout=dropout, gpu=gpu, embed_size=embed_size)
+
+
+        self.transformer = TransformerEncoder(num_layers, d_model, heads, d_ff, dropout, embeddings,
+                 max_relative_positions)
+
+        # context vectors for computing attention as in 2.2
+        self.U = nn.Linear(embed_size, Y)
+
+        # final layer: create a matrix to use for the L binary classifiers as in 2.3
+        self.final = nn.Linear(embed_size, Y)
+
+    def forward(self, src, lengths=None):
+        x = self.transformer(src)
+
+        # apply attention
+        alpha = F.softmax(self.U.weight.matmul(x.transpose(1, 2)), dim=2)
+        # document representations are weighted sums using the attention. Can compute all at once as a matmul
+        m = alpha.matmul(x)
+        # final layer classification
+        y = self.final.weight.mul(m).sum(dim=2).add(self.final.bias)
+
+        yhat = y
+        loss = self._get_loss(yhat, target, diffs)
+        return yhat, loss, alpha
