@@ -46,7 +46,7 @@ class BaseModel(nn.Module):
 
     def _get_loss(self, yhat, target, diffs=None):
         # calculate the BCE
-        loss = F.binary_cross_entropy(yhat, target)
+        loss = F.binary_cross_entropy_with_logits(yhat, target)
 
         # add description regularization loss if relevant
         if self.lmbda > 0 and diffs is not None:
@@ -290,9 +290,11 @@ class TransformerAttn(BaseModel):
         print(type(embed_size))
         print(type(Y))
         self.U = nn.Linear(embed_size, Y)
+        xavier_uniform(self.U.weight)
 
         # final layer: create a matrix to use for the L binary classifiers as in 2.3
         self.final = nn.Linear(embed_size, Y)
+        xavier_uniform(self.final.weight)
 
     def forward(self, src, target):
         # print(src.size())
@@ -305,6 +307,6 @@ class TransformerAttn(BaseModel):
         # final layer classification
         y = self.final.weight.mul(m).sum(dim=2).add(self.final.bias)
 
-        yhat = torch.sigmoid(y)
+        yhat = y
         loss = self._get_loss(yhat, target)
         return yhat, loss, alpha

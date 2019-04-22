@@ -325,7 +325,12 @@ def test(model, Y, epoch, data_path, fold, gpu, version, code_inds, dicts, sampl
 
         # save predictions, target, hadm ids
         yhat_raw.append(output)
+        #print(output)
+        # sub = np.full_like(output, 0.5)
+        # output = np.subtract(output, sub)
+        # output/=.5
         output = np.round(output)
+        #print(output)
         y.append(target_data)
         yhat.append(output)
         hids.extend(hadm_ids)
