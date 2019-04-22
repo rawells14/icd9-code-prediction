@@ -16,6 +16,7 @@ from dataproc import extract_wvs
 import numpy as np
 
 from math import floor
+import math
 
 from utils.encoder import EncoderBase
 from utils.multi_headed_attn import MultiHeadedAttention
@@ -91,6 +92,48 @@ class BaseModel(nn.Module):
         return diffs
 
 
+class PositionalEncoding(nn.Module):
+    """Sinusoidal positional encoding for non-recurrent neural networks.
+    Implementation based on "Attention Is All You Need"
+    :cite:`DBLP:journals/corr/VaswaniSPUJGKP17`
+    Args:
+       dropout (float): dropout parameter
+       dim (int): embedding size
+    """
+
+    def __init__(self, dropout, dim, max_len=5000):
+        if dim % 2 != 0:
+            raise ValueError("Cannot use sin/cos positional encoding with "
+                             "odd dim (got dim={:d})".format(dim))
+        pe = torch.zeros(max_len, dim)
+        position = torch.arange(0, max_len).unsqueeze(1)
+        div_term = torch.exp((torch.arange(0, dim, 2, dtype=torch.float) *
+                             -(math.log(10000.0) / dim)))
+        pe[:, 0::2] = torch.sin(position.float() * div_term)
+        pe[:, 1::2] = torch.cos(position.float() * div_term)
+        pe = pe.unsqueeze(1)
+        super(PositionalEncoding, self).__init__()
+        self.register_buffer('pe', pe)
+        self.dropout = nn.Dropout(p=dropout)
+        self.dim = dim
+
+    def forward(self, emb, step=None):
+        """Embed inputs.
+        Args:
+            emb (FloatTensor): Sequence of word vectors
+                ``(seq_len, batch_size, self.dim)``
+            step (int or NoneType): If stepwise (``seq_len = 1``), use
+                the encoding for this position.
+        """
+
+        emb = emb * math.sqrt(self.dim)
+        if step is None:
+            emb = emb + self.pe[:emb.size(0)]
+        else:
+            emb = emb + self.pe[step]
+        emb = self.dropout(emb)
+        return emb
+
 class TransformerEncoderLayer(nn.Module):
     """
     A single layer of the transformer encoder.
@@ -161,6 +204,7 @@ class TransformerEncoder(EncoderBase):
         super(TransformerEncoder, self).__init__()
 
         self.embeddings = embeddings
+        self.pos_enc = PositionalEncoding(dropout=0, dim=d_model)
         self.transformer = nn.ModuleList(
             [TransformerEncoderLayer(
                 d_model, heads, d_ff, dropout,
@@ -182,14 +226,21 @@ class TransformerEncoder(EncoderBase):
 
     def forward(self, src, lengths=None):
         """See :func:`EncoderBase.forward()`"""
-        self._check_args(src, lengths)
+
+        # self._check_args(src, lengths)
 
         emb = self.embeddings(src)
+        # print(emb.shape)
+        emb = emb.transpose(0, 1).contiguous()
+        # print(emb.shape)
+        emb = self.pos_enc(emb)
+
 
         out = emb.transpose(0, 1).contiguous()
-        words = src[:, :, 0].transpose(0, 1)
+        # print(out.shape)
+        words = src
         w_batch, w_len = words.size()
-        padding_idx = self.embeddings.word_padding_idx
+        padding_idx = self.embeddings.padding_idx
         mask = words.data.eq(padding_idx).unsqueeze(1)  # [B, 1, T]
         # Run the forward pass of every layer of the tranformer.
         for layer in self.transformer:
@@ -236,12 +287,15 @@ class TransformerAttn(BaseModel):
                  max_relative_positions)
 
         # context vectors for computing attention as in 2.2
+        print(type(embed_size))
+        print(type(Y))
         self.U = nn.Linear(embed_size, Y)
 
         # final layer: create a matrix to use for the L binary classifiers as in 2.3
         self.final = nn.Linear(embed_size, Y)
 
     def forward(self, src, target):
+        # print(src.size())
         x = self.transformer(src)
 
         # apply attention
@@ -251,6 +305,6 @@ class TransformerAttn(BaseModel):
         # final layer classification
         y = self.final.weight.mul(m).sum(dim=2).add(self.final.bias)
 
-        yhat = y
+        yhat = torch.sigmoid(y)
         loss = self._get_loss(yhat, target)
         return yhat, loss, alpha

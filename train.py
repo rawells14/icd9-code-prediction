@@ -51,6 +51,8 @@ def init(args):
 
     model = transformer.TransformerAttn(args.Y, args.embed_file, dicts, args.lmbda, args.gpu, args.embed_size,
                                         args.num_layers, args.heads, args.d_ff, args.dropout, args.max_relative_positions)
+    if args.gpu:
+        model.cuda()
     print(model)
 
     if not args.test_model:
@@ -192,6 +194,8 @@ def train(model, optimizer, Y, epoch, batch_size, data_path, gpu, version, dicts
     gen = datasets.data_generator(data_path, dicts, batch_size, num_labels, version=version, desc_embed=desc_embed)
     for batch_idx, tup in tqdm(enumerate(gen)):
         data, target, _, code_set, descs = tup
+        # print("data size " + str(data.shape))
+        # print("target size " + str(target.shape))
         data, target = Variable(torch.LongTensor(data)), Variable(torch.FloatTensor(target))
         unseen_code_inds = unseen_code_inds.difference(code_set)
         if gpu:
@@ -204,12 +208,13 @@ def train(model, optimizer, Y, epoch, batch_size, data_path, gpu, version, dicts
         else:
             desc_data = None
 
-        output, loss, _ = model(data, target, desc_data=desc_data)
+        output, loss, _ = model(data, target)
+        # print(output.shape)
 
         loss.backward()
         optimizer.step()
 
-        losses.append(loss.data[0])
+        losses.append(loss.data.item())
 
         if not quiet and batch_idx % print_every == 0:
             # print the average loss of the last 10 batches
@@ -270,11 +275,10 @@ def test(model, Y, epoch, data_path, fold, gpu, version, code_inds, dicts, sampl
 
         # get an attention sample for 2% of batches
         get_attn = samples and (np.random.rand() < 0.02 or (fold == 'test' and testing))
-        output, loss, alpha = model(data, target, desc_data=desc_data, get_attention=get_attn)
+        output, loss, alpha = model(data, target)
 
-        output = F.sigmoid(output)
         output = output.data.cpu().numpy()
-        losses.append(loss.data[0])
+        losses.append(loss.data.item)
         target_data = target.data.cpu().numpy()
         if get_attn and samples:
             interpret.save_samples(data, output, target_data, alpha, window_size, epoch, tp_file, fp_file, dicts=dicts)
@@ -310,7 +314,7 @@ if __name__ == "__main__":
     parser.add_argument("--data_path", type=str,
                         help="path to a file containing sorted train data. dev/test splits assumed to have same name format with 'train' replaced by 'dev' and 'test'")
     parser.add_argument("--vocab", type=str, help="path to a file holding vocab word list for discretizing words")
-    parser.add_argument("--Y", type=str, help="size of label space")
+    parser.add_argument("--Y", type=int, help="size of label space")
     parser.add_argument("--n_epochs", type=int, help="number of epochs to train")
     parser.add_argument("--embed-file", type=str, required=False, dest="embed_file",
                         help="path to a file holding pre-trained embeddings")
@@ -328,8 +332,10 @@ if __name__ == "__main__":
                         help="number of encoder layers")
     parser.add_argument("--heads", type=int, default=4, required=False, dest="heads",
                         help="number of attention heads")
-    parser.add_argument("--max_relative_positions", type=int, default=3000, required=False, dest="max_relative_positions",
+    parser.add_argument("--max_relative_positions", type=int, default=2500, required=False, dest="max_relative_positions",
                         help="max number of positions")
+    parser.add_argument("--weight-decay", type=float, required=False, dest="weight_decay", default=0,
+                        help="coefficient for penalizing l2 norm of model weights (default: 0)")
     parser.add_argument("--lmbda", type=float, required=False, dest="lmbda", default=0,
                         help="hyperparameter to tradeoff BCE loss and similarity embedding loss. defaults to 0, which won't create/use the description embedding module at all. ")
     parser.add_argument("--dataset", type=str, choices=['mimic2', 'mimic3'], dest="version", default='mimic3',
@@ -347,6 +353,25 @@ if __name__ == "__main__":
                         help="optional flag to use GPU if available")
     parser.add_argument("--quiet", dest="quiet", action="store_const", required=False, const=True,
                         help="optional flag not to print so much during training")
+
+
+    parser.add_argument("--cell-type", type=str, choices=["lstm", "gru"], help="what kind of RNN to use (default: GRU)", dest='cell_type',
+                        default='gru')
+    parser.add_argument("--rnn-dim", type=int, required=False, dest="rnn_dim", default=128,
+                        help="size of rnn hidden layer (default: 128)")
+    parser.add_argument("--bidirectional", dest="bidirectional", action="store_const", required=False, const=True,
+                        help="optional flag for rnn to use a bidirectional model")
+    parser.add_argument("--rnn-layers", type=int, required=False, dest="rnn_layers", default=1,
+                        help="number of layers for RNN models (default: 1)")
+    parser.add_argument("--filter-size", type=str, required=False, dest="filter_size", default=4,
+                        help="size of convolution filter to use. (default: 3) For multi_conv_attn, give comma separated integers, e.g. 3,4,5")
+    parser.add_argument("--num-filter-maps", type=int, required=False, dest="num_filter_maps", default=50,
+                        help="size of conv output (default: 50)")
+    parser.add_argument("--pool", choices=['max', 'avg'], required=False, dest="pool", help="which type of pooling to do (logreg model only)")
+    parser.add_argument("--model", required=False, type=str, choices=["cnn_vanilla", "rnn", "conv_attn", "multi_conv_attn", "logreg", "saved", "transformer"], help="model", default="transformer")
+    parser.add_argument("--samples", dest="samples", action="store_const", required=False, const=True,
+                        help="optional flag to save samples of good / bad predictions")
+
     args = parser.parse_args()
     command = ' '.join(['python'] + sys.argv)
     args.command = command
