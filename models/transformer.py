@@ -46,7 +46,7 @@ class BaseModel(nn.Module):
 
     def _get_loss(self, yhat, target, diffs=None):
         # calculate the BCE
-        loss = F.binary_cross_entropy_with_logits(yhat, target)
+        loss = F.binary_cross_entropy(yhat, target)
 
         # add description regularization loss if relevant
         if self.lmbda > 0 and diffs is not None:
