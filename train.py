@@ -145,6 +145,8 @@ def train_epochs(args, model, optimizer, params, dicts):
                 args.test_model = '%s/model_best_%s.pth' % (model_dir, args.criterion)
                 model = transformer.TransformerAttn(args.Y, args.embed_file, dicts, args.lmbda, args.gpu, args.embed_size,
                                         args.num_layers, args.heads, args.d_ff, args.dropout, args.max_relative_positions)
+                if args.gpu:
+                    model.cuda
                 sd = torch.load(args.test_model)
                 model.load_state_dict(sd)
                 #TODO
