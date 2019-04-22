@@ -31,6 +31,7 @@ import learn.tools as tools
 import models.transformer as transformer
 # from noam_optim import NoamOpt
 
+from tensorboardX import SummaryWriter
 
 class NoamOpt:
     "Optim wrapper that implements rate."
@@ -104,6 +105,7 @@ def train_epochs(args, model, optimizer, params, dicts):
     """
         Main loop. does train and test
     """
+    
     metrics_hist = defaultdict(lambda: [])
     metrics_hist_te = defaultdict(lambda: [])
     metrics_hist_tr = defaultdict(lambda: [])
@@ -169,7 +171,12 @@ def one_epoch(model, optimizer, Y, epoch, n_epochs, batch_size, data_path, versi
         Wrapper to do a training epoch and test on dev
     """
     if not testing:
+        writer = SummaryWriter('tb_data/' + str(model_dir))
+
         losses, unseen_code_inds = train(model, optimizer, Y, epoch, batch_size, data_path, gpu, version, dicts, quiet)
+        for i in range(len(losses)):
+            writer.add_scalar('training_loss', losses[i], epoch * len(losses) + i)
+        
         loss = np.mean(losses)
         print("epoch loss: " + str(loss))
     else:
@@ -210,6 +217,10 @@ def one_epoch(model, optimizer, Y, epoch, n_epochs, batch_size, data_path, versi
         tpr_te = defaultdict(lambda: [])
     metrics_tr = {'loss': loss}
     metrics_all = (metrics, metrics_te, metrics_tr)
+
+    # record f1 scores on tensorboard
+    writer.add_scalar('f1_micro', metrics['f1_micro'], epoch)
+    writer.add_scalar('f1_macro', metrics['f1_macro'], epoch)
     return metrics_all
 
 
