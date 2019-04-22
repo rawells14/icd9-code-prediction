@@ -172,8 +172,9 @@ def one_epoch(model, optimizer, Y, epoch, n_epochs, batch_size, data_path, versi
     """
         Wrapper to do a training epoch and test on dev
     """
+    writer = SummaryWriter('tb_data/' + str(model_dir))
     if not testing:
-        writer = SummaryWriter('tb_data/' + str(model_dir))
+       
 
         losses, unseen_code_inds = train(model, optimizer, Y, epoch, batch_size, data_path, gpu, version, dicts, quiet)
         for i in range(len(losses)):
