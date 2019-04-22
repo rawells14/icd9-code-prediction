@@ -278,7 +278,7 @@ def test(model, Y, epoch, data_path, fold, gpu, version, code_inds, dicts, sampl
         output, loss, alpha = model(data, target)
 
         output = output.data.cpu().numpy()
-        losses.append(loss.data.item)
+        losses.append(loss.data.item())
         target_data = target.data.cpu().numpy()
         if get_attn and samples:
             interpret.save_samples(data, output, target_data, alpha, window_size, epoch, tp_file, fp_file, dicts=dicts)
@@ -305,6 +305,7 @@ def test(model, Y, epoch, data_path, fold, gpu, version, code_inds, dicts, sampl
     k = 5 if num_labels == 50 else [8, 15]
     metrics = evaluation.all_metrics(yhat, y, k=k, yhat_raw=yhat_raw)
     evaluation.print_metrics(metrics)
+    # print(losses)
     metrics['loss_%s' % fold] = np.mean(losses)
     return metrics
 
