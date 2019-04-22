@@ -3,6 +3,7 @@
 """
 import sys
 sys.path.append("caml-mimic/")
+sys.path.append("utils/")
 
 import torch
 import torch.optim as optim
@@ -28,7 +29,39 @@ import persistence
 import learn.models as models
 import learn.tools as tools
 import models.transformer as transformer
+# from noam_optim import NoamOpt
 
+
+class NoamOpt:
+    "Optim wrapper that implements rate."
+
+    def __init__(self, model_size, factor, warmup, optimizer):
+        self.optimizer = optimizer
+        self._step = 0
+        self.warmup = warmup
+        self.factor = factor
+        self.model_size = model_size
+        self._rate = 0
+
+    def step(self):
+        "Update parameters and rate"
+        self._step += 1
+        rate = self.rate()
+        for p in self.optimizer.param_groups:
+            p['lr'] = rate
+        self._rate = rate
+        self.optimizer.step()
+
+    def zero_grad(self):
+        self.optimizer.zero_grad()
+
+    def rate(self, step=None):
+        "Implement `lrate` above"
+        if step is None:
+            step = self._step
+        return self.factor * \
+               (self.model_size ** (-0.5) *
+                min(step ** (-0.5), step * self.warmup ** (-1.5)))
 
 def main(args):
     start = time.time()
@@ -57,6 +90,8 @@ def init(args):
 
     if not args.test_model:
         optimizer = optim.Adam(model.parameters(), weight_decay=args.weight_decay, lr=args.lr)
+        optimizer = NoamOpt(100, 2, 4000,
+            torch.optim.Adam(model.parameters(), lr=0, betas=(0.9, 0.98), eps=1e-9))
     else:
         optimizer = None
 
@@ -108,7 +143,11 @@ def train_epochs(args, model, optimizer, params, dicts):
                 print("%s hasn't improved in %d epochs, early stopping..." % (args.criterion, args.patience))
                 test_only = True
                 args.test_model = '%s/model_best_%s.pth' % (model_dir, args.criterion)
-                model = tools.pick_model(args, dicts)
+                model = transformer.TransformerAttn(args.Y, args.embed_file, dicts, args.lmbda, args.gpu, args.embed_size,
+                                        args.num_layers, args.heads, args.d_ff, args.dropout, args.max_relative_positions)
+                sd = torch.load(args.test_model)
+                model.load_state_dict(sd)
+                #TODO
     return epoch + 1
 
 
