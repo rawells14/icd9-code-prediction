@@ -20,7 +20,7 @@ import math
 
 from utils.encoder import EncoderBase
 from utils.multi_headed_attn import MultiHeadedAttention
-from utils.position_ffn import PositionwiseFeedForward
+from utils.position_ffn import PositionwiseFeedForward, StackedConvolutions
 
 class BaseModel(nn.Module):
     def __init__(self, Y, embed_file, dicts, lmbda=0, dropout=0.5, gpu=True, embed_size=100):
@@ -153,7 +153,7 @@ class TransformerEncoderLayer(nn.Module):
         self.self_attn = MultiHeadedAttention(
             heads, d_model, dropout=dropout,
             max_relative_positions=max_relative_positions)
-        self.feed_forward = PositionwiseFeedForward(d_model, d_ff, dropout)
+        self.feed_forward = StackedConvolutions(d_model, d_ff, dropout)
         self.layer_norm = nn.LayerNorm(d_model, eps=1e-6)
         self.dropout = nn.Dropout(dropout)
 
